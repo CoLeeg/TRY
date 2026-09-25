@@ -401,6 +401,13 @@
                 }, 3000);
             }
         }
+// 開啟狀態通知監聽
+const notifyChar = await service.getCharacteristic('0000be82-0000-1000-8000-00805f9b34fb');
+await notifyChar.startNotifications();
+notifyChar.addEventListener('characteristicvaluechanged', (e) => {
+    const data = new Uint8Array(e.target.value.buffer);
+    console.log('📡 設備返回數據：', Array.from(data).map(b => '0x'+b.toString(16).padStart(2,'0')).join(' '));
+});
 
         // 觸發拍照
 // 觸發Insta360 X5拍照（修正寫入方式 + 標準協議幀）
