@@ -338,71 +338,67 @@
         }
 
         // ========== 修復後的藍牙連接邏輯 ==========
-        async function connectInsta360() {
-            if (!navigator.bluetooth) {
-                alert("你的瀏覽器不支援 Web 藍牙功能，請使用 Chrome / Edge 桌面版");
-                return;
-            }
+async function connectInsta360() {
+    if (!navigator.bluetooth) {
+        alert("你的瀏覽器不支援 Web 藍牙功能，請使用 Chrome / Edge 桌面版");
+        return;
+    }
 
-            try {
-                document.getElementById('bt-status').textContent = "藍牙：掃描中...";
-                
-                // 接受所有藍牙設備，避免名稱過濾導致掃不到
-                const options = {
-                    acceptAllDevices: true,
-                    optionalServices: [] // 先不指定服務，連上後再列舉
-                };
+    try {
+        document.getElementById('bt-status').textContent = "藍牙：掃描中...";
+        
+        // ===== 重點修改：填入X5的服務UUID到optionalServices =====
+        const INSTA_X5_SERVICE = '0000ffb0-0000-1000-8000-00805f9b34fb';
+        const options = {
+            filters: [
+                { namePrefix: "X5" }
+            ],
+            optionalServices: [INSTA_X5_SERVICE]
+        };
 
-                // 如果你已知服務UUID，可以把上面改成：
-                // optionalServices: ['你的服務UUID']
+        bluetoothDevice = await navigator.bluetooth.requestDevice(options);
 
-                bluetoothDevice = await navigator.bluetooth.requestDevice(options);
+        document.getElementById('bt-status').textContent = "藍牙：連線中...";
+        btServer = await bluetoothDevice.gatt.connect();
 
-                document.getElementById('bt-status').textContent = "藍牙：連線中...";
-                btServer = await bluetoothDevice.gatt.connect();
-
-                // 連線成功，列出所有服務
-                console.log('=== 連線成功！設備名稱：', bluetoothDevice.name, ' ===');
-                const services = await btServer.getPrimaryServices();
-                console.log('可用服務列表：');
-                
-                for (const service of services) {
-                    console.log('服務 UUID:', service.uuid);
-                    const characteristics = await service.getCharacteristics();
-                    console.log('  對應特徵 UUID：');
-                    characteristics.forEach(char => {
-                        console.log('   ', char.uuid, '| 屬性：', char.properties);
-                    });
-                }
-                console.log('請從上面找到拍照對應的服務與特徵UUID，填入程式碼開頭的變數中');
-
-                // 如果已經填了UUID，就自動獲取拍照特徵
-                if (INSTA360_SERVICE_UUID && INSTA360_CAPTURE_CHAR_UUID) {
-                    const service = await btServer.getPrimaryService(INSTA360_SERVICE_UUID);
-                    btCaptureCharacteristic = await service.getCharacteristic(INSTA360_CAPTURE_CHAR_UUID);
-                }
-
-                document.getElementById('bt-status').textContent = `藍牙：已連接 ${bluetoothDevice.name}`;
-                document.getElementById('btConnectBtn').textContent = "Disconnect";
-                document.getElementById('btConnectBtn').classList.add('bt-connected');
-                document.getElementById('btConnectBtn').onclick = disconnectInsta360;
-
-                bluetoothDevice.addEventListener('gattserverdisconnected', onBtDisconnected);
-
-            } catch(error) {
-                console.error('藍牙連線失敗：', error);
-                let msg = "藍牙：連線失敗";
-                if (error.name === 'NotFoundError') {
-                    msg = "藍牙：已取消掃描或未選取設備";
-                } else if (error.message.includes('not available')) {
-                    msg = "藍牙：請確認設備已開啟並處於可配對模式";
-                }
-                document.getElementById('bt-status').textContent = msg;
-                setTimeout(() => {
-                    document.getElementById('bt-status').textContent = "藍牙：未連接";
-                }, 2500);
-            }
+        console.log('=== 連線成功！設備名稱：', bluetoothDevice.name, ' ===');
+        const services = await btServer.getPrimaryServices();
+        console.log('可用服務列表：');
+        
+        for (const service of services) {
+            console.log('服務 UUID:', service.uuid);
+            const characteristics = await service.getCharacteristics();
+            console.log('  對應特徵 UUID：');
+            characteristics.forEach(char => {
+                console.log('   ', char.uuid, '| 屬性：', char.properties);
+            });
         }
+
+        // 填入X5拍照服務與特徵
+        const service = await btServer.getPrimaryService(INSTA_X5_SERVICE);
+        btCaptureCharacteristic = await service.getCharacteristic('0000ffb2-0000-1000-8000-00805f9b34fb');
+
+        document.getElementById('bt-status').textContent = `藍牙：已連接 ${bluetoothDevice.name}`;
+        document.getElementById('btConnectBtn').textContent = "Disconnect";
+        document.getElementById('btConnectBtn').classList.add('bt-connected');
+        document.getElementById('btConnectBtn').onclick = disconnectInsta360;
+
+        bluetoothDevice.addEventListener('gattserverdisconnected', onBtDisconnected);
+
+    } catch(error) {
+        console.error('藍牙連線失敗：', error);
+        let msg = "藍牙：連線失敗";
+        if (error.name === 'NotFoundError') {
+            msg = "藍牙：已取消掃描或未選取設備";
+        } else if (error.message.includes('not available')) {
+            msg = "藍牙：請確認設備已開啟並處於可配對模式";
+        }
+        document.getElementById('bt-status').textContent = msg;
+        setTimeout(() => {
+            document.getElementById('bt-status').textContent = "藍牙：未連接";
+        }, 2500);
+    }
+}
 
         // 觸發 Insta360 拍照
         async function triggerInsta360Capture() {
