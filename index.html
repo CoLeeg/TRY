@@ -363,11 +363,11 @@
             }
         }
 
-// 發送拍照指令（先切模式再快門）
-async function triggerCapture() {
-    if (!btCaptureChar) return false;
-    try {
-        // 1. 切換到拍照模式
+                // 發送拍照指令（先切模式再快門）
+        async function triggerCapture() {
+            if (!btCaptureChar) return false;
+            try {
+               // 1. 切換到拍照模式
         const modeCmd = new Uint8Array([0xAA, 0x07, 0x02, 0x00, 0x01, 0x00, 0x0A]);
         await btCaptureChar.writeValue(modeCmd);
         await new Promise(r => setTimeout(r, 500));
