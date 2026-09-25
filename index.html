@@ -87,6 +87,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <script>
+        // 全域變數
         const { jsPDF } = window.jspdf;
         let pdfFiles = [];
         let annotations = [];
@@ -96,21 +97,24 @@
         const DISPLAY_SCALE = 1.5;
         let currentDotSize = 24;
         
-        // 藍牙 X5 正確UUID
+        // ========== 藍牙 X5 配置 ==========
         let bluetoothDevice = null;
         let btServer = null;
         let btCaptureChar = null;
         const X5_SERVICE = '0000be80-0000-1000-8000-00805f9b34fb';
         const X5_WRITE_CHAR = '0000be81-0000-1000-8000-00805f9b34fb';
         const X5_NOTIFY_CHAR = '0000be82-0000-1000-8000-00805f9b34fb';
-        // X5 單拍指令幀
+        // 切換拍照模式指令
+        const MODE_PHOTO_CMD = new Uint8Array([0xAA, 0x07, 0x02, 0x00, 0x01, 0x00, 0x0A]);
+        // 單張拍照指令
         const CAPTURE_CMD = new Uint8Array([0xAA, 0x07, 0x01, 0x00, 0x00, 0x00, 0x08]);
         
+        // PDF.js 初始化
         pdfjsLib.GlobalWorkerOptions.workerSrc = 
             'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
         document.getElementById('pdfInput').addEventListener('change', handleFileUpload);
         
-        // 日期格式化
+        // 日期格式化 dd-mm-yyyy
         function getFormattedDate() {
             const now = new Date();
             const day = String(now.getDate()).padStart(2, '0');
@@ -119,6 +123,7 @@
             return `${day}-${month}-${year}`;
         }
 
+        // 處理檔案上傳
         function handleFileUpload(e) {
             const files = Array.from(e.target.files);
             files.forEach(file => {
@@ -129,6 +134,7 @@
             });
         }
 
+        // 渲染PDF頁面
         async function renderPDF(file) {
             const reader = new FileReader();
             reader.onload = async function() {
@@ -137,10 +143,11 @@
                 
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
+                    // 原始PDF尺寸（pt）
                     const originalViewport = page.getViewport({ scale: 1 });
                     const originalWidth = originalViewport.width;
                     const originalHeight = originalViewport.height;
-                    
+                    // 顯示用縮放
                     const displayViewport = page.getViewport({ scale: DISPLAY_SCALE });
                     
                     const canvas = document.createElement('canvas');
@@ -166,8 +173,9 @@
             reader.readAsArrayBuffer(file);
         }
 
+        // 頁面互動事件
         function setupPageInteractions(container) {
-            // 雙擊打點 + 觸發拍照
+            // 雙擊新增標註
             container.addEventListener('dblclick', async function(e) {
                 if (currentMode !== 'add') return;
                 const rect = container.getBoundingClientRect();
@@ -216,6 +224,7 @@
             });
         }
 
+        // 建立標註點
         async function createAnnotation(container, x, y) {
             const annotation = {
                 id: currentAnnotationId++,
@@ -237,6 +246,7 @@
             }
         }
 
+        // 繪製標註點
         function drawAnnotation(container, annotation) {
             const dot = document.createElement('div');
             dot.className = 'annotation-dot';
@@ -251,6 +261,7 @@
             dot.addEventListener('mousedown', (e) => {
                 if (currentMode === 'move') draggedElement = dot;
             });
+            // 長按觸控拖曳
             let touchTimer = null;
             dot.addEventListener('touchstart', (e) => {
                 if (currentMode !== 'move') return;
@@ -258,6 +269,7 @@
                 touchTimer = setTimeout(() => draggedElement = dot, 500);
             }, { passive: false });
             dot.addEventListener('touchend', () => clearTimeout(touchTimer));
+            // 點擊刪除
             dot.addEventListener('click', function(e) {
                 if (currentMode === 'move') return;
                 e.stopPropagation();
@@ -267,6 +279,7 @@
             return dot;
         }
 
+        // 刪除標註
         function handleAnnotationClick(element) {
             const id = parseInt(element.dataset.id);
             if (confirm('Delete this point?')) {
@@ -277,23 +290,27 @@
             }
         }
 
+        // 切換新增模式
         function toggleAddMode() {
             currentMode = currentMode === 'add' ? 'none' : 'add';
             document.getElementById('addModeBtn').classList.toggle('mode-active');
             document.body.style.cursor = currentMode === 'add' ? 'crosshair' : 'default';
         }
 
+        // 切換移動模式
         function toggleMoveMode() {
             currentMode = currentMode === 'move' ? 'none' : 'move';
             document.getElementById('moveModeBtn').classList.toggle('mode-active');
             document.body.style.cursor = currentMode === 'move' ? 'move' : 'default';
         }
 
+        // 更新編號
         function updateNumbering() {
             annotations.sort((a, b) => a.id - b.id);
-            annotations.forEach((ann, i) => ann.number = i + 1);
+            annotations.forEach((ann, index) => ann.number = index + 1);
         }
 
+        // 重繪所有標註
         function redrawAllAnnotations() {
             document.querySelectorAll('.page-container').forEach(container => {
                 container.querySelectorAll('.annotation-dot').forEach(dot => dot.remove());
@@ -302,11 +319,13 @@
             });
         }
 
+        // 載入既有標註
         function loadAnnotations(container) {
             const key = container.dataset.key;
             annotations.filter(a => a.key === key).forEach(a => drawAnnotation(container, a));
         }
 
+        // 批量調整點大小
         function resizeAllPoints() {
             const input = prompt('請輸入標註點尺寸（像素，預設24）：', currentDotSize);
             if (input === null) return;
@@ -316,10 +335,10 @@
             redrawAllAnnotations();
         }
 
-        // ========== 藍牙連接（完整async，無語法錯誤） ==========
+        // ========== 藍牙連接功能 ==========
         async function connectInsta360() {
             if (!navigator.bluetooth) {
-                alert('請使用 Chrome / Edge 桌面版');
+                alert('請使用 Chrome / Edge 桌面版瀏覽器');
                 return;
             }
             try {
@@ -338,7 +357,7 @@
                 const service = await btServer.getPrimaryService(X5_SERVICE);
                 btCaptureChar = await service.getCharacteristic(X5_WRITE_CHAR);
 
-                // 開啟狀態監聽
+                // 開啟狀態通知監聽
                 const notifyChar = await service.getCharacteristic(X5_NOTIFY_CHAR);
                 await notifyChar.startNotifications();
                 notifyChar.addEventListener('characteristicvaluechanged', e => {
@@ -363,27 +382,30 @@
             }
         }
 
-                // 發送拍照指令（先切模式再快門）
+        // 發送拍照指令（先切拍照模式再快門）
         async function triggerCapture() {
             if (!btCaptureChar) return false;
             try {
-               // 1. 切換到拍照模式
-        const modeCmd = new Uint8Array([0xAA, 0x07, 0x02, 0x00, 0x01, 0x00, 0x0A]);
-        await btCaptureChar.writeValue(modeCmd);
-        await new Promise(r => setTimeout(r, 500));
-        
-        // 2. 發送單拍快門
-        await btCaptureChar.writeValue(CAPTURE_CMD);
-        console.log('✅ 拍照指令已發送');
-        await new Promise(r => setTimeout(r, 1500));
-        return true;
-    } catch (e) {
-        console.error('❌ 拍照發送失敗', e);
-        return false;
-    }
-}
+                // 切換到拍照模式
+                await btCaptureChar.writeValue(MODE_PHOTO_CMD);
+                await new Promise(r => setTimeout(r, 600));
+                // 發送單拍指令
+                await btCaptureChar.writeValue(CAPTURE_CMD);
+                console.log('✅ 拍照指令已發送');
+                await new Promise(r => setTimeout(r, 1500));
+                return true;
+            } catch (e) {
+                console.error('❌ 拍照發送失敗', e);
+                return false;
+            }
+        }
 
+        // 斷開藍牙
+        function disconnectBt() {
+            if (btServer) btServer.disconnect();
+        }
 
+        // 藍牙斷線回調
         function onBtDisconnect() {
             bluetoothDevice = null;
             btServer = null;
@@ -394,7 +416,7 @@
             document.getElementById('btConnectBtn').onclick = connectInsta360;
         }
 
-        // ========== 匯出PDF ==========
+        // ========== 匯出帶標註PDF ==========
         async function exportAnnotatedPDF() {
             const pages = document.querySelectorAll('.page-container');
             if (pages.length === 0) { alert('請先上傳PDF'); return; }
@@ -418,10 +440,10 @@
                     scale: 2,
                     backgroundColor: '#ffffff'
                 });
-                const img = canvas.toDataURL('image/jpeg', 0.95);
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
                 if (i > 0) doc.addPage([pw, ph]);
-                doc.addImage(img, 'JPEG', 0, 0, pw, ph);
+                doc.addImage(imgData, 'JPEG', 0, 0, pw, ph);
             }
 
             doc.save(`${getFormattedDate()}-layout record.pdf`);
