@@ -401,7 +401,8 @@
                 }, 3000);
             }
         }
-// 開啟狀態通知監聽
+
+        // 開啟狀態通知監聽
 const notifyChar = await service.getCharacteristic('0000be82-0000-1000-8000-00805f9b34fb');
 await notifyChar.startNotifications();
 notifyChar.addEventListener('characteristicvaluechanged', (e) => {
