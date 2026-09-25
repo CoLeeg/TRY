@@ -403,17 +403,34 @@
         }
 
         // 觸發拍照
-        async function triggerInsta360Capture() {
-            if (!btCaptureCharacteristic) return false;
-            try {
-                await btCaptureCharacteristic.writeValue(CAPTURE_COMMAND);
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                return true;
-            } catch(e) {
-                console.error('拍照指令發送失敗', e);
-                return false;
-            }
-        }
+// 觸發Insta360 X5拍照（修正寫入方式 + 標準協議幀）
+async function triggerInsta360Capture() {
+    if (!btCaptureCharacteristic) return false;
+    try {
+        // Insta360 X5 單拍標準指令幀：
+        // 幀頭0xAA + 指令長度 + 指令碼(0x05=拍照) + 參數 + 校驗
+        const captureCmd = new Uint8Array([
+            0xAA,       // 幀頭
+            0x07,       // 總長度
+            0x05,       // 指令碼：拍照
+            0x00,       // 參數1
+            0x00,       // 參數2
+            0x00,       // 參數3
+            0x07        // 校驗和（簡單累加）
+        ]);
+
+        // 標準寫入（be81支援write，不支援writeWithoutResponse）
+        await btCaptureCharacteristic.writeValue(captureCmd);
+        console.log('✅ 拍照指令已發送');
+        
+        // 等待拍照處理
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        return true;
+    } catch(e) {
+        console.error('❌ 拍照指令發送失敗', e);
+        return false;
+    }
+}
 
         function disconnectInsta360() {
             if (btServer) {
