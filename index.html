@@ -97,18 +97,33 @@
         const DISPLAY_SCALE = 1.5;
         let currentDotSize = 24;
         
-        // ========== 藍牙 X5 完整配置 ==========
+        // ========== 藍牙 X5 配置 ==========
         let bluetoothDevice = null;
         let btServer = null;
-        let btCaptureChar = null;
+        let btWriteChar = null;
         const X5_SERVICE = '0000be80-0000-1000-8000-00805f9b34fb';
         const X5_WRITE_CHAR = '0000be81-0000-1000-8000-00805f9b34fb';
         const X5_NOTIFY_CHAR = '0000be82-0000-1000-8000-00805f9b34fb';
-        
-        // 進入藍牙遙控模式指令
-        const ENTER_REMOTE_CMD = new Uint8Array([0xAA, 0x06, 0x01, 0x00, 0x00, 0x07]);
-        // 單張拍照指令
-        const CAPTURE_CMD = new Uint8Array([0xAA, 0x06, 0x05, 0x00, 0x00, 0x0B]);
+
+        // 校驗和計算函數
+        function calcChecksum(bytes) {
+            let sum = 0;
+            for (let i = 0; i < bytes.length; i++) {
+                sum += bytes[i];
+            }
+            return sum & 0xFF; // 取低8位
+        }
+
+        // 構建標準指令幀
+        function buildCmd(cmd, param1 = 0, param2 = 0, param3 = 0) {
+            const frame = [0xAA, 0x06, cmd, param1, param2, param3];
+            frame.push(calcChecksum(frame));
+            return new Uint8Array(frame);
+        }
+
+        // 指令定義（自動計算正確校驗和）
+        const CMD_ENTER_REMOTE = buildCmd(0x01); // 進入遙控模式
+        const CMD_CAPTURE_PHOTO = buildCmd(0x05); // 單張拍照
         
         // PDF.js 初始化
         pdfjsLib.GlobalWorkerOptions.workerSrc = 
@@ -144,11 +159,9 @@
                 
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
-                    // 原始PDF尺寸（pt）
                     const originalViewport = page.getViewport({ scale: 1 });
                     const originalWidth = originalViewport.width;
                     const originalHeight = originalViewport.height;
-                    // 顯示用縮放
                     const displayViewport = page.getViewport({ scale: DISPLAY_SCALE });
                     
                     const canvas = document.createElement('canvas');
@@ -176,7 +189,6 @@
 
         // 頁面互動事件
         function setupPageInteractions(container) {
-            // 雙擊新增標註
             container.addEventListener('dblclick', async function(e) {
                 if (currentMode !== 'add') return;
                 const rect = container.getBoundingClientRect();
@@ -239,7 +251,7 @@
             const dotElement = drawAnnotation(container, annotation);
 
             // 藍牙已連接則觸發拍照
-            if (btCaptureChar) {
+            if (btWriteChar) {
                 dotElement.classList.add('capturing');
                 const ok = await triggerCapture();
                 dotElement.classList.remove('capturing');
@@ -262,7 +274,6 @@
             dot.addEventListener('mousedown', (e) => {
                 if (currentMode === 'move') draggedElement = dot;
             });
-            // 長按觸控拖曳
             let touchTimer = null;
             dot.addEventListener('touchstart', (e) => {
                 if (currentMode !== 'move') return;
@@ -270,7 +281,6 @@
                 touchTimer = setTimeout(() => draggedElement = dot, 500);
             }, { passive: false });
             dot.addEventListener('touchend', () => clearTimeout(touchTimer));
-            // 點擊刪除
             dot.addEventListener('click', function(e) {
                 if (currentMode === 'move') return;
                 e.stopPropagation();
@@ -356,9 +366,9 @@
                 await new Promise(r => setTimeout(r, 800));
 
                 const service = await btServer.getPrimaryService(X5_SERVICE);
-                btCaptureChar = await service.getCharacteristic(X5_WRITE_CHAR);
+                btWriteChar = await service.getCharacteristic(X5_WRITE_CHAR);
 
-                // 開啟狀態通知監聽
+                // 開啟狀態通知
                 const notifyChar = await service.getCharacteristic(X5_NOTIFY_CHAR);
                 await notifyChar.startNotifications();
                 notifyChar.addEventListener('characteristicvaluechanged', e => {
@@ -366,7 +376,11 @@
                     console.log('📡 設備返回：', Array.from(data).map(b => '0x'+b.toString(16).padStart(2,'0')).join(' '));
                 });
 
-                console.log('✅ 連接成功，拍照通道就緒');
+                // 連線後自動進入遙控模式
+                await btWriteChar.writeValue(CMD_ENTER_REMOTE);
+                await new Promise(r => setTimeout(r, 600));
+
+                console.log('✅ 連接成功，已進入遙控模式');
                 document.getElementById('bt-status').textContent = `藍牙：已連接 ${device.name}`;
                 document.getElementById('btConnectBtn').textContent = 'Disconnect';
                 document.getElementById('btConnectBtn').classList.add('bt-connected');
@@ -383,16 +397,11 @@
             }
         }
 
-        // 發送拍照指令（先進入遙控模式再快門）
+        // 發送拍照指令
         async function triggerCapture() {
-            if (!btCaptureChar) return false;
+            if (!btWriteChar) return false;
             try {
-                // 1. 進入藍牙遙控模式
-                await btCaptureChar.writeValue(ENTER_REMOTE_CMD);
-                await new Promise(r => setTimeout(r, 800));
-                
-                // 2. 發送單拍快門
-                await btCaptureChar.writeValue(CAPTURE_CMD);
+                await btWriteChar.writeValue(CMD_CAPTURE_PHOTO);
                 console.log('✅ 拍照指令已發送');
                 await new Promise(r => setTimeout(r, 1500));
                 return true;
@@ -411,7 +420,7 @@
         function onBtDisconnect() {
             bluetoothDevice = null;
             btServer = null;
-            btCaptureChar = null;
+            btWriteChar = null;
             document.getElementById('bt-status').textContent = '藍牙：已斷開';
             document.getElementById('btConnectBtn').textContent = 'Connect Insta360';
             document.getElementById('btConnectBtn').classList.remove('bt-connected');
