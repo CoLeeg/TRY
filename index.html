@@ -345,70 +345,79 @@
 
         // ========== 蓝牙连接函数（全局可访问） ==========
         async function connectInsta360() {
-            if (!navigator.bluetooth) {
-                alert("你的浏览器不支持 Web 蓝牙功能，请使用 Chrome / Edge 桌面版");
-                return;
+    if (!navigator.bluetooth) {
+        alert("你的瀏覽器不支援 Web 藍牙功能，請使用 Chrome / Edge 桌面版");
+        return;
+    }
+
+    try {
+        document.getElementById('bt-status').textContent = "藍牙：掃描中...";
+        
+        // 完全放寬：接受所有設備，不預設服務
+        const options = {
+            acceptAllDevices: true,
+            optionalServices: [
+                '0000ffb0-0000-1000-8000-00805f9b34fb',
+                '0000ffe0-0000-1000-8000-00805f9b34fb',
+                '00001800-0000-1000-8000-00805f9b34fb',
+                '00001801-0000-1000-8000-00805f9b34fb'
+            ]
+        };
+
+        bluetoothDevice = await navigator.bluetooth.requestDevice(options);
+
+        document.getElementById('bt-status').textContent = "藍牙：連接GATT中...";
+        btServer = await bluetoothDevice.gatt.connect();
+        
+        // 延長等待時間
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        console.log('=== 設備已連接：', bluetoothDevice.name, ' ===');
+        
+        // 嘗試讀取所有服務
+        try {
+            const services = await btServer.getPrimaryServices();
+            console.log('讀取到的服務數量：', services.length);
+            if(services.length === 0){
+                console.warn('警告：相機返回了空服務列表，固件限制了第三方訪問');
+                alert('相機藍牙服務被固件屏蔽，網頁端無法讀取控制');
             }
+            
+            for (const service of services) {
+                console.log('服務 UUID:', service.uuid);
+                const characteristics = await service.getCharacteristics();
+                characteristics.forEach(char => {
+                    console.log('  特徵：', char.uuid, ' 屬性：', char.properties);
+                });
+            }
+        } catch(e) {
+            console.error('無法列舉服務：', e);
+        }
 
-            try {
-                document.getElementById('bt-status').textContent = "蓝牙：扫描中...";
-                
-                const options = {
-                    filters: [
-                        { namePrefix: "X5" }
-                    ],
-                    optionalServices: [INSTA_X5_SERVICE]
-                };
+        document.getElementById('bt-status').textContent = `藍牙：已連接 ${bluetoothDevice.name}`;
+        document.getElementById('btConnectBtn').textContent = "Disconnect";
+        document.getElementById('btConnectBtn').classList.add('bt-connected');
+        document.getElementById('btConnectBtn').onclick = disconnectInsta360;
 
-                bluetoothDevice = await navigator.bluetooth.requestDevice(options);
+        bluetoothDevice.addEventListener('gattserverdisconnected', onBtDisconnected);
 
-                document.getElementById('bt-status').textContent = "蓝牙：连接GATT中...";
-                btServer = await bluetoothDevice.gatt.connect();
-                
-                // 等待相机GATT初始化
-                await new Promise(resolve => setTimeout(resolve, 800));
-
-                console.log('=== 连接成功！设备名称：', bluetoothDevice.name, ' ===');
-                const services = await btServer.getPrimaryServices();
-                console.log('可用服务列表：');
-                
-                for (const service of services) {
-                    console.log('服务 UUID:', service.uuid);
-                    const characteristics = await service.getCharacteristics();
-                    console.log('  对应特征 UUID：');
-                    characteristics.forEach(char => {
-                        console.log('   ', char.uuid, '| 属性：', char.properties);
-                    });
-                }
-
-                const service = await btServer.getPrimaryService(INSTA_X5_SERVICE);
-                btCaptureCharacteristic = await service.getCharacteristic(INSTA_X5_CAPTURE_CHAR);
-
-                document.getElementById('bt-status').textContent = `蓝牙：已连接 ${bluetoothDevice.name}`;
-                document.getElementById('btConnectBtn').textContent = "Disconnect";
-                document.getElementById('btConnectBtn').classList.add('bt-connected');
-                document.getElementById('btConnectBtn').onclick = disconnectInsta360;
-
-                bluetoothDevice.addEventListener('gattserverdisconnected', onBtDisconnected);
-
-            } catch(error) {
-                console.error('蓝牙连接失败：', error);
-                let msg = "蓝牙：连接失败";
-                if (error.name === 'NotFoundError') {
-                    if(error.message.includes("No Services")){
-                        msg = "蓝牙：读不到相机服务！请关闭手机Insta360 App、重启相机";
-                    }else{
-                        msg = "蓝牙：已取消扫描或未选取设备";
-                    }
-                } else if (error.message.includes('not available')) {
-                    msg = "蓝牙：请确认设备已开启并处于可配对模式";
-                }
-                document.getElementById('bt-status').textContent = msg;
-                setTimeout(() => {
-                    document.getElementById('bt-status').textContent = "蓝牙：未连接";
-                }, 3000);
+    } catch(error) {
+        console.error('藍牙連接失敗：', error);
+        let msg = "藍牙：連接失敗";
+        if (error.name === 'NotFoundError') {
+            if(error.message.includes("No Services")){
+                msg = "藍牙：讀不到相機服務！請關閉手機Insta360 App、重啟相機";
+            }else{
+                msg = "藍牙：已取消掃描或未選取設備";
             }
         }
+        document.getElementById('bt-status').textContent = msg;
+        setTimeout(() => {
+            document.getElementById('bt-status').textContent = "藍牙：未連接";
+        }, 3000);
+    }
+}
+
 
         // 触发Insta360拍照
         async function triggerInsta360Capture() {
