@@ -97,17 +97,18 @@
         const DISPLAY_SCALE = 1.5;
         let currentDotSize = 24;
         
-        // ========== 藍牙 X5 配置 ==========
+        // ========== 藍牙 X5 完整配置 ==========
         let bluetoothDevice = null;
         let btServer = null;
         let btCaptureChar = null;
         const X5_SERVICE = '0000be80-0000-1000-8000-00805f9b34fb';
         const X5_WRITE_CHAR = '0000be81-0000-1000-8000-00805f9b34fb';
         const X5_NOTIFY_CHAR = '0000be82-0000-1000-8000-00805f9b34fb';
-        // 切換拍照模式指令
-        const MODE_PHOTO_CMD = new Uint8Array([0xAA, 0x07, 0x02, 0x00, 0x01, 0x00, 0x0A]);
+        
+        // 進入藍牙遙控模式指令
+        const ENTER_REMOTE_CMD = new Uint8Array([0xAA, 0x06, 0x01, 0x00, 0x00, 0x07]);
         // 單張拍照指令
-        const CAPTURE_CMD = new Uint8Array([0xAA, 0x07, 0x01, 0x00, 0x00, 0x00, 0x08]);
+        const CAPTURE_CMD = new Uint8Array([0xAA, 0x06, 0x05, 0x00, 0x00, 0x0B]);
         
         // PDF.js 初始化
         pdfjsLib.GlobalWorkerOptions.workerSrc = 
@@ -382,14 +383,15 @@
             }
         }
 
-        // 發送拍照指令（先切拍照模式再快門）
+        // 發送拍照指令（先進入遙控模式再快門）
         async function triggerCapture() {
             if (!btCaptureChar) return false;
             try {
-                // 切換到拍照模式
-                await btCaptureChar.writeValue(MODE_PHOTO_CMD);
-                await new Promise(r => setTimeout(r, 600));
-                // 發送單拍指令
+                // 1. 進入藍牙遙控模式
+                await btCaptureChar.writeValue(ENTER_REMOTE_CMD);
+                await new Promise(r => setTimeout(r, 800));
+                
+                // 2. 發送單拍快門
                 await btCaptureChar.writeValue(CAPTURE_CMD);
                 console.log('✅ 拍照指令已發送');
                 await new Promise(r => setTimeout(r, 1500));
