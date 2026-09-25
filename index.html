@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>PDF图纸打点 + Insta360蓝牙拍照工具</title>
+    <title>PDF圖紙打點 + Insta360 X5藍牙拍照</title>
     <style>
         #pdf-container { margin: 20px; }
         .page-container { 
@@ -29,7 +29,7 @@
         .annotation-dot:hover {
             transform: scale(1.1);
         }
-        /* 拍照环形进度条 */
+        /* 拍照環形進度條 */
         .annotation-dot.capturing::after {
             content: '';
             position: absolute;
@@ -76,18 +76,17 @@
         <button id="moveModeBtn" onclick="toggleMoveMode()">Move</button>
         <button id="resizeBtn" onclick="resizeAllPoints()">Resize Points</button>
         <button id="btConnectBtn" onclick="connectInsta360()">Connect Insta360</button>
-        <span id="bt-status">蓝牙：未连接</span>
+        <span id="bt-status">藍牙：未連接</span>
         <button id="exportPdfBtn" onclick="exportAnnotatedPDF()">Export PDF</button>
     </div>
     <div id="pdf-container"></div>
 
-    <!-- 依赖库 -->
+    <!-- 依賴庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <script>
-        // 全局变量声明
         const { jsPDF } = window.jspdf;
         let pdfFiles = [];
         let annotations = [];
@@ -97,24 +96,19 @@
         const DISPLAY_SCALE = 1.5;
         let currentDotSize = 24;
         
-        // 蓝牙相关变量
+        // 藍牙相關 - 已修正為X5真實UUID
         let bluetoothDevice = null;
         let btServer = null;
         let btCaptureCharacteristic = null;
-        // Insta360 X5 官方GATT服务与特征UUID
-        const INSTA_X5_SERVICE = '0000ffb0-0000-1000-8000-00805f9b34fb';
-        const INSTA_X5_CAPTURE_CHAR = '0000ffb2-0000-1000-8000-00805f9b34fb';
+        const INSTA_X5_SERVICE = '0000be80-0000-1000-8000-00805f9b34fb';
+        const INSTA_X5_CAPTURE_CHAR = '0000be81-0000-1000-8000-00805f9b34fb';
         const CAPTURE_COMMAND = new Uint8Array([0x02, 0x01]);
         
         pdfjsLib.GlobalWorkerOptions.workerSrc = 
             'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
+        document.getElementById('pdfInput').addEventListener('change', handleFileUpload);
         
-        // 页面加载完成后绑定事件
-        window.onload = function() {
-            document.getElementById('pdfInput').addEventListener('change', handleFileUpload);
-        };
-
-        // 日期格式化：日-月-年
+        // 日期格式化
         function getFormattedDate() {
             const now = new Date();
             const day = String(now.getDate()).padStart(2, '0');
@@ -141,12 +135,10 @@
                 
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
-                    // 获取原始PDF页面尺寸（单位：pt）
                     const originalViewport = page.getViewport({ scale: 1 });
                     const originalWidth = originalViewport.width;
                     const originalHeight = originalViewport.height;
                     
-                    // 显示用的缩放视口
                     const displayViewport = page.getViewport({ scale: DISPLAY_SCALE });
                     
                     const canvas = document.createElement('canvas');
@@ -173,7 +165,7 @@
         }
 
         function setupPageInteractions(container) {
-            // 双击添加标记 + 触发拍照
+            // 雙擊添加標記 + 觸發拍照
             container.addEventListener('dblclick', async function(e) {
                 if (currentMode !== 'add') return;
                 const rect = container.getBoundingClientRect();
@@ -181,7 +173,7 @@
                 const y = e.clientY - rect.top;
                 await createAnnotation(container, x, y);
             });
-            // 鼠标拖拽移动
+            // 滑鼠拖曳移動
             container.addEventListener('mousemove', function(e) {
                 if (!draggedElement) return;
                 const rect = container.getBoundingClientRect();
@@ -200,7 +192,7 @@
                     draggedElement = null;
                 }
             });
-            // 触控拖拽支持
+            // 觸控拖曳支援
             container.addEventListener('touchmove', function(e) {
                 if (!draggedElement) return;
                 e.preventDefault();
@@ -234,14 +226,14 @@
             updateNumbering();
             const dotElement = drawAnnotation(container, annotation);
 
-            // 蓝牙已连接且有拍照特征时才触发拍照
+            // 藍牙已連接才觸發拍照
             if (btCaptureCharacteristic) {
                 dotElement.classList.add('capturing');
                 const captureSuccess = await triggerInsta360Capture();
                 dotElement.classList.remove('capturing');
                 
                 if (!captureSuccess) {
-                    console.warn('Insta360 拍照触发失败');
+                    console.warn('Insta360 拍照觸發失敗');
                 }
             }
         }
@@ -262,7 +254,6 @@
                     draggedElement = dot;
                 }
             });
-            // 长按触屏拖拽
             let touchTimer = null;
             dot.addEventListener('touchstart', (e) => {
                 if (currentMode !== 'move') return;
@@ -275,7 +266,6 @@
                 clearTimeout(touchTimer);
                 touchTimer = null;
             });
-            // 点击删除
             dot.addEventListener('click', function(e) {
                 if (currentMode === 'move') return;
                 e.stopPropagation();
@@ -332,94 +322,87 @@
         }
 
         function resizeAllPoints() {
-            const input = prompt("请输入标注点的尺寸（像素，默认24）：", currentDotSize);
+            const input = prompt("請輸入標註點的尺寸（像素，預設24）：", currentDotSize);
             if (input === null) return;
             const newSize = parseInt(input);
             if (isNaN(newSize) || newSize <= 0) {
-                alert("请输入有效的正整数像素值");
+                alert("請輸入有效的正整數像素值");
                 return;
             }
             currentDotSize = newSize;
             redrawAllAnnotations();
         }
 
-        // ========== 蓝牙连接函数（全局可访问） ==========
+        // ========== 修正後的藍牙連接函數 ==========
         async function connectInsta360() {
-    if (!navigator.bluetooth) {
-        alert("你的瀏覽器不支援 Web 藍牙功能，請使用 Chrome / Edge 桌面版");
-        return;
-    }
-
-    try {
-        document.getElementById('bt-status').textContent = "藍牙：掃描中...";
-        
-        // 完全放寬：接受所有設備，不預設服務
-        const options = {
-            acceptAllDevices: true,
-            optionalServices: [
-                '0000ffb0-0000-1000-8000-00805f9b34fb',
-                '0000ffe0-0000-1000-8000-00805f9b34fb',
-                '00001800-0000-1000-8000-00805f9b34fb',
-                '00001801-0000-1000-8000-00805f9b34fb'
-            ]
-        };
-
-        bluetoothDevice = await navigator.bluetooth.requestDevice(options);
-
-        document.getElementById('bt-status').textContent = "藍牙：連接GATT中...";
-        btServer = await bluetoothDevice.gatt.connect();
-        
-        // 延長等待時間
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        console.log('=== 設備已連接：', bluetoothDevice.name, ' ===');
-        
-        // 嘗試讀取所有服務
-        try {
-            const services = await btServer.getPrimaryServices();
-            console.log('讀取到的服務數量：', services.length);
-            if(services.length === 0){
-                console.warn('警告：相機返回了空服務列表，固件限制了第三方訪問');
-                alert('相機藍牙服務被固件屏蔽，網頁端無法讀取控制');
+            if (!navigator.bluetooth) {
+                alert("你的瀏覽器不支援 Web 藍牙功能，請使用 Chrome / Edge 桌面版");
+                return;
             }
-            
-            for (const service of services) {
-                console.log('服務 UUID:', service.uuid);
-                const characteristics = await service.getCharacteristics();
-                characteristics.forEach(char => {
-                    console.log('  特徵：', char.uuid, ' 屬性：', char.properties);
-                });
+
+            try {
+                document.getElementById('bt-status').textContent = "藍牙：掃描中...";
+                
+                const options = {
+                    filters: [
+                        { namePrefix: "X5" }
+                    ],
+                    optionalServices: [
+                        INSTA_X5_SERVICE,
+                        '00001800-0000-1000-8000-00805f9b34fb',
+                        '00001801-0000-1000-8000-00805f9b34fb'
+                    ]
+                };
+
+                bluetoothDevice = await navigator.bluetooth.requestDevice(options);
+
+                document.getElementById('bt-status').textContent = "藍牙：連接GATT中...";
+                btServer = await bluetoothDevice.gatt.connect();
+                
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                console.log('=== 連接成功！設備名稱：', bluetoothDevice.name, ' ===');
+                const services = await btServer.getPrimaryServices();
+                console.log('讀取到服務數量：', services.length);
+                
+                for (const service of services) {
+                    console.log('服務 UUID:', service.uuid);
+                    const characteristics = await service.getCharacteristics();
+                    characteristics.forEach(char => {
+                        console.log('  特徵：', char.uuid, ' 屬性：', char.properties);
+                    });
+                }
+
+                // 獲取拍照控制特徵
+                const service = await btServer.getPrimaryService(INSTA_X5_SERVICE);
+                btCaptureCharacteristic = await service.getCharacteristic(INSTA_X5_CAPTURE_CHAR);
+                console.log('已獲取拍照控制特徵：', btCaptureCharacteristic.uuid);
+
+                document.getElementById('bt-status').textContent = `藍牙：已連接 ${bluetoothDevice.name}`;
+                document.getElementById('btConnectBtn').textContent = "Disconnect";
+                document.getElementById('btConnectBtn').classList.add('bt-connected');
+                document.getElementById('btConnectBtn').onclick = disconnectInsta360;
+
+                bluetoothDevice.addEventListener('gattserverdisconnected', onBtDisconnected);
+
+            } catch(error) {
+                console.error('藍牙連接失敗：', error);
+                let msg = "藍牙：連接失敗";
+                if (error.name === 'NotFoundError') {
+                    if(error.message.includes("No Services")){
+                        msg = "藍牙：讀不到相機服務，請重啟相機後重試";
+                    }else{
+                        msg = "藍牙：已取消掃描或未選取設備";
+                    }
+                }
+                document.getElementById('bt-status').textContent = msg;
+                setTimeout(() => {
+                    document.getElementById('bt-status').textContent = "藍牙：未連接";
+                }, 3000);
             }
-        } catch(e) {
-            console.error('無法列舉服務：', e);
         }
 
-        document.getElementById('bt-status').textContent = `藍牙：已連接 ${bluetoothDevice.name}`;
-        document.getElementById('btConnectBtn').textContent = "Disconnect";
-        document.getElementById('btConnectBtn').classList.add('bt-connected');
-        document.getElementById('btConnectBtn').onclick = disconnectInsta360;
-
-        bluetoothDevice.addEventListener('gattserverdisconnected', onBtDisconnected);
-
-    } catch(error) {
-        console.error('藍牙連接失敗：', error);
-        let msg = "藍牙：連接失敗";
-        if (error.name === 'NotFoundError') {
-            if(error.message.includes("No Services")){
-                msg = "藍牙：讀不到相機服務！請關閉手機Insta360 App、重啟相機";
-            }else{
-                msg = "藍牙：已取消掃描或未選取設備";
-            }
-        }
-        document.getElementById('bt-status').textContent = msg;
-        setTimeout(() => {
-            document.getElementById('bt-status').textContent = "藍牙：未連接";
-        }, 3000);
-    }
-}
-
-
-        // 触发Insta360拍照
+        // 觸發拍照
         async function triggerInsta360Capture() {
             if (!btCaptureCharacteristic) return false;
             try {
@@ -427,7 +410,7 @@
                 await new Promise(resolve => setTimeout(resolve, 1500));
                 return true;
             } catch(e) {
-                console.error('拍照指令发送失败', e);
+                console.error('拍照指令發送失敗', e);
                 return false;
             }
         }
@@ -439,7 +422,7 @@
         }
 
         function onBtDisconnected() {
-            document.getElementById('bt-status').textContent = "蓝牙：已断开";
+            document.getElementById('bt-status').textContent = "藍牙：已斷開";
             document.getElementById('btConnectBtn').textContent = "Connect Insta360";
             document.getElementById('btConnectBtn').classList.remove('bt-connected');
             document.getElementById('btConnectBtn').onclick = connectInsta360;
@@ -448,7 +431,7 @@
             btCaptureCharacteristic = null;
         }
 
-        // ========== 导出带标记的PDF ==========
+        // ========== 匯出PDF ==========
         async function exportAnnotatedPDF() {
             const pageContainers = document.querySelectorAll('.page-container');
             if(pageContainers.length === 0){
