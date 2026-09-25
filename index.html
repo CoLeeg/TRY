@@ -104,7 +104,7 @@
         const X5_WRITE_CHAR = '0000be81-0000-1000-8000-00805f9b34fb';
         const X5_NOTIFY_CHAR = '0000be82-0000-1000-8000-00805f9b34fb';
         // X5 單拍指令幀
-        const CAPTURE_CMD = new Uint8Array([0xAA, 0x07, 0x05, 0x00, 0x00, 0x00, 0x07]);
+        const CAPTURE_CMD = new Uint8Array([0xAA, 0x07, 0x01, 0x00, 0x00, 0x00, 0x08]);
         
         pdfjsLib.GlobalWorkerOptions.workerSrc = 
             'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
@@ -363,23 +363,26 @@
             }
         }
 
-        // 發送拍照指令
-        async function triggerCapture() {
-            if (!btCaptureChar) return false;
-            try {
-                await btCaptureChar.writeValue(CAPTURE_CMD);
-                console.log('✅ 拍照指令已發送');
-                await new Promise(r => setTimeout(r, 1500));
-                return true;
-            } catch (e) {
-                console.error('❌ 拍照發送失敗', e);
-                return false;
-            }
-        }
+// 發送拍照指令（先切模式再快門）
+async function triggerCapture() {
+    if (!btCaptureChar) return false;
+    try {
+        // 1. 切換到拍照模式
+        const modeCmd = new Uint8Array([0xAA, 0x07, 0x02, 0x00, 0x01, 0x00, 0x0A]);
+        await btCaptureChar.writeValue(modeCmd);
+        await new Promise(r => setTimeout(r, 500));
+        
+        // 2. 發送單拍快門
+        await btCaptureChar.writeValue(CAPTURE_CMD);
+        console.log('✅ 拍照指令已發送');
+        await new Promise(r => setTimeout(r, 1500));
+        return true;
+    } catch (e) {
+        console.error('❌ 拍照發送失敗', e);
+        return false;
+    }
+}
 
-        function disconnectBt() {
-            if (btServer) btServer.disconnect();
-        }
 
         function onBtDisconnect() {
             bluetoothDevice = null;
