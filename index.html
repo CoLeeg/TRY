@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>PDF圖紙打點 + Insta360 X5藍牙拍照</title>
+    <title>PDF圖紙打點 + Insta360 X5拍照</title>
     <style>
         #pdf-container { margin: 20px; }
         .page-container { 
@@ -29,7 +29,6 @@
         .annotation-dot:hover {
             transform: scale(1.1);
         }
-        /* 拍照環形進度條 */
         .annotation-dot.capturing::after {
             content: '';
             position: absolute;
@@ -75,19 +74,17 @@
         <button id="addModeBtn" onclick="toggleAddMode()">Set Point</button>
         <button id="moveModeBtn" onclick="toggleMoveMode()">Move</button>
         <button id="resizeBtn" onclick="resizeAllPoints()">Resize Points</button>
-        <button id="btConnectBtn" onclick="connectInsta360()">Connect Insta360</button>
-        <span id="bt-status">藍牙：未連接</span>
+        <button id="btConnectBtn" onclick="connectBluetooth()">連接相機</button>
+        <span id="bt-status">未連接</span>
         <button id="exportPdfBtn" onclick="exportAnnotatedPDF()">Export PDF</button>
     </div>
     <div id="pdf-container"></div>
 
-    <!-- 依賴庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <script>
-        // 全域變數
         const { jsPDF } = window.jspdf;
         let pdfFiles = [];
         let annotations = [];
@@ -96,50 +93,12 @@
         let draggedElement = null;
         const DISPLAY_SCALE = 1.5;
         let currentDotSize = 24;
-        
-        // ========== 藍牙 X5 配置 ==========
-        let bluetoothDevice = null;
-        let btServer = null;
-        let btWriteChar = null;
-        const X5_SERVICE = '0000be80-0000-1000-8000-00805f9b34fb';
-        const X5_WRITE_CHAR = '0000be81-0000-1000-8000-00805f9b34fb';
-        const X5_NOTIFY_CHAR = '0000be82-0000-1000-8000-00805f9b34fb';
+        let ws = null;
 
-        // 校驗和計算：所有前面位元組累加，取低8位
-        function calcChecksum(bytes) {
-            let sum = 0;
-            for (let i = 0; i < bytes.length; i++) {
-                sum += bytes[i];
-            }
-            return sum & 0xFF;
-        }
-
-        // 構建標準指令幀
-        // 格式：[0xAA(幀頭)] + [總長度] + [指令碼] + [3位參數] + [校驗和]
-        // 總長度 = 7 字節（固定）
-        function buildCmd(cmd, param1 = 0, param2 = 0, param3 = 0) {
-            const frame = [
-                0xAA,   // 幀頭
-                0x07,   // 總長度（修正：整個幀共7字節）
-                cmd,    // 指令碼
-                param1, // 參數1
-                param2, // 參數2
-                param3  // 參數3
-            ];
-            frame.push(calcChecksum(frame)); // 附加校驗和
-            return new Uint8Array(frame);
-        }
-
-        // 指令定義（自動計算正確校驗和）
-        const CMD_ENTER_REMOTE = buildCmd(0x01);    // 進入藍牙遙控模式
-        const CMD_CAPTURE_PHOTO = buildCmd(0x05);  // 單張拍照
-        
-        // PDF.js 初始化
         pdfjsLib.GlobalWorkerOptions.workerSrc = 
             'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
         document.getElementById('pdfInput').addEventListener('change', handleFileUpload);
-        
-        // 日期格式化 dd-mm-yyyy
+
         function getFormattedDate() {
             const now = new Date();
             const day = String(now.getDate()).padStart(2, '0');
@@ -148,7 +107,6 @@
             return `${day}-${month}-${year}`;
         }
 
-        // 處理檔案上傳
         function handleFileUpload(e) {
             const files = Array.from(e.target.files);
             files.forEach(file => {
@@ -159,7 +117,6 @@
             });
         }
 
-        // 渲染PDF頁面
         async function renderPDF(file) {
             const reader = new FileReader();
             reader.onload = async function() {
@@ -196,7 +153,6 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // 頁面互動事件
         function setupPageInteractions(container) {
             container.addEventListener('dblclick', async function(e) {
                 if (currentMode !== 'add') return;
@@ -205,7 +161,6 @@
                 const y = e.clientY - rect.top;
                 await createAnnotation(container, x, y);
             });
-            // 滑鼠拖曳
             container.addEventListener('mousemove', function(e) {
                 if (!draggedElement) return;
                 const rect = container.getBoundingClientRect();
@@ -224,29 +179,8 @@
                     draggedElement = null;
                 }
             });
-            // 觸控拖曳
-            container.addEventListener('touchmove', function(e) {
-                if (!draggedElement) return;
-                e.preventDefault();
-                const rect = container.getBoundingClientRect();
-                const x = e.touches[0].clientX - rect.left;
-                const y = e.touches[0].clientY - rect.top;
-                draggedElement.style.left = `${x - currentDotSize / 2}px`;
-                draggedElement.style.top = `${y - currentDotSize / 2}px`;
-            }, { passive: false });
-            container.addEventListener('touchend', function(e) {
-                if (draggedElement) {
-                    const annotation = annotations.find(
-                        a => a.id === parseInt(draggedElement.dataset.id)
-                    );
-                    annotation.x = parseFloat(draggedElement.style.left) + currentDotSize / 2;
-                    annotation.y = parseFloat(draggedElement.style.top) + currentDotSize / 2;
-                    draggedElement = null;
-                }
-            });
         }
 
-        // 建立標註點
         async function createAnnotation(container, x, y) {
             const annotation = {
                 id: currentAnnotationId++,
@@ -259,16 +193,16 @@
             updateNumbering();
             const dotElement = drawAnnotation(container, annotation);
 
-            // 藍牙已連接則觸發拍照
-            if (btWriteChar) {
+            // 發送拍照請求
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 dotElement.classList.add('capturing');
-                const ok = await triggerCapture();
-                dotElement.classList.remove('capturing');
-                if (!ok) console.warn('拍照觸發失敗');
+                ws.send("capture");
+                setTimeout(() => {
+                    dotElement.classList.remove('capturing');
+                }, 1500);
             }
         }
 
-        // 繪製標註點
         function drawAnnotation(container, annotation) {
             const dot = document.createElement('div');
             dot.className = 'annotation-dot';
@@ -283,13 +217,6 @@
             dot.addEventListener('mousedown', (e) => {
                 if (currentMode === 'move') draggedElement = dot;
             });
-            let touchTimer = null;
-            dot.addEventListener('touchstart', (e) => {
-                if (currentMode !== 'move') return;
-                e.preventDefault();
-                touchTimer = setTimeout(() => draggedElement = dot, 500);
-            }, { passive: false });
-            dot.addEventListener('touchend', () => clearTimeout(touchTimer));
             dot.addEventListener('click', function(e) {
                 if (currentMode === 'move') return;
                 e.stopPropagation();
@@ -299,7 +226,6 @@
             return dot;
         }
 
-        // 刪除標註
         function handleAnnotationClick(element) {
             const id = parseInt(element.dataset.id);
             if (confirm('Delete this point?')) {
@@ -310,27 +236,23 @@
             }
         }
 
-        // 切換新增模式
         function toggleAddMode() {
             currentMode = currentMode === 'add' ? 'none' : 'add';
             document.getElementById('addModeBtn').classList.toggle('mode-active');
             document.body.style.cursor = currentMode === 'add' ? 'crosshair' : 'default';
         }
 
-        // 切換移動模式
         function toggleMoveMode() {
             currentMode = currentMode === 'move' ? 'none' : 'move';
             document.getElementById('moveModeBtn').classList.toggle('mode-active');
             document.body.style.cursor = currentMode === 'move' ? 'move' : 'default';
         }
 
-        // 更新編號
         function updateNumbering() {
             annotations.sort((a, b) => a.id - b.id);
             annotations.forEach((ann, index) => ann.number = index + 1);
         }
 
-        // 重繪所有標註
         function redrawAllAnnotations() {
             document.querySelectorAll('.page-container').forEach(container => {
                 container.querySelectorAll('.annotation-dot').forEach(dot => dot.remove());
@@ -339,13 +261,11 @@
             });
         }
 
-        // 載入既有標註
         function loadAnnotations(container) {
             const key = container.dataset.key;
             annotations.filter(a => a.key === key).forEach(a => drawAnnotation(container, a));
         }
 
-        // 批量調整點大小
         function resizeAllPoints() {
             const input = prompt('請輸入標註點尺寸（像素，預設24）：', currentDotSize);
             if (input === null) return;
@@ -355,88 +275,33 @@
             redrawAllAnnotations();
         }
 
-        // ========== 藍牙連接功能 ==========
-        async function connectInsta360() {
-            if (!navigator.bluetooth) {
-                alert('請使用 Chrome / Edge 桌面版瀏覽器');
-                return;
+        // 連接本地 Python WebSocket
+        function connectBluetooth() {
+            if (ws) {
+                ws.close();
             }
-            try {
-                document.getElementById('bt-status').textContent = '藍牙：掃描中...';
-                
-                const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'X5' }],
-                    optionalServices: [X5_SERVICE]
-                });
-                bluetoothDevice = device;
-
-                document.getElementById('bt-status').textContent = '藍牙：連接中...';
-                btServer = await device.gatt.connect();
-                await new Promise(r => setTimeout(r, 800));
-
-                const service = await btServer.getPrimaryService(X5_SERVICE);
-                btWriteChar = await service.getCharacteristic(X5_WRITE_CHAR);
-
-                // 開啟狀態通知
-                const notifyChar = await service.getCharacteristic(X5_NOTIFY_CHAR);
-                await notifyChar.startNotifications();
-                notifyChar.addEventListener('characteristicvaluechanged', e => {
-                    const data = new Uint8Array(e.target.value.buffer);
-                    console.log('📡 設備返回：', Array.from(data).map(b => '0x'+b.toString(16).padStart(2,'0')).join(' '));
-                });
-
-                // 連線後自動進入遙控模式
-                await btWriteChar.writeValue(CMD_ENTER_REMOTE);
-                await new Promise(r => setTimeout(r, 800));
-
-                console.log('✅ 連接成功，已進入遙控模式');
-                document.getElementById('bt-status').textContent = `藍牙：已連接 ${device.name}`;
-                document.getElementById('btConnectBtn').textContent = 'Disconnect';
-                document.getElementById('btConnectBtn').classList.add('bt-connected');
-                document.getElementById('btConnectBtn').onclick = disconnectBt;
-
-                device.addEventListener('gattserverdisconnected', onBtDisconnect);
-
-            } catch (err) {
-                console.error('連接失敗：', err);
-                let msg = '藍牙：連接失敗';
-                if (err.name === 'NotFoundError') msg = '藍牙：已取消或未選取設備';
-                document.getElementById('bt-status').textContent = msg;
-                setTimeout(() => document.getElementById('bt-status').textContent = '藍牙：未連接', 2500);
-            }
+            ws = new WebSocket('ws://127.0.0.1:8765');
+            ws.onopen = function() {
+                document.getElementById('bt-status').textContent = '連接中...';
+                ws.send('connect_bt');
+            };
+            ws.onmessage = function(e) {
+                if (e.data === 'bt_connected') {
+                    document.getElementById('bt-status').textContent = '已連接';
+                    document.getElementById('btConnectBtn').classList.add('bt-connected');
+                    document.getElementById('btConnectBtn').textContent = '斷開';
+                } else if (e.data.startsWith('error')) {
+                    document.getElementById('bt-status').textContent = e.data;
+                    setTimeout(() => document.getElementById('bt-status').textContent = '未連接', 2000);
+                }
+            };
+            ws.onclose = function() {
+                document.getElementById('bt-status').textContent = '已斷開';
+                document.getElementById('btConnectBtn').classList.remove('bt-connected');
+                document.getElementById('btConnectBtn').textContent = '連接相機';
+            };
         }
 
-        // 發送拍照指令
-        async function triggerCapture() {
-            if (!btWriteChar) return false;
-            try {
-                await btWriteChar.writeValue(CMD_CAPTURE_PHOTO);
-                console.log('✅ 拍照指令已發送');
-                await new Promise(r => setTimeout(r, 1500));
-                return true;
-            } catch (e) {
-                console.error('❌ 拍照發送失敗', e);
-                return false;
-            }
-        }
-
-        // 斷開藍牙
-        function disconnectBt() {
-            if (btServer) btServer.disconnect();
-        }
-
-        // 藍牙斷線回調
-        function onBtDisconnect() {
-            bluetoothDevice = null;
-            btServer = null;
-            btWriteChar = null;
-            document.getElementById('bt-status').textContent = '藍牙：已斷開';
-            document.getElementById('btConnectBtn').textContent = 'Connect Insta360';
-            document.getElementById('btConnectBtn').classList.remove('bt-connected');
-            document.getElementById('btConnectBtn').onclick = connectInsta360;
-        }
-
-        // ========== 匯出帶標註PDF ==========
         async function exportAnnotatedPDF() {
             const pages = document.querySelectorAll('.page-container');
             if (pages.length === 0) { alert('請先上傳PDF'); return; }
