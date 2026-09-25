@@ -105,25 +105,34 @@
         const X5_WRITE_CHAR = '0000be81-0000-1000-8000-00805f9b34fb';
         const X5_NOTIFY_CHAR = '0000be82-0000-1000-8000-00805f9b34fb';
 
-        // 校驗和計算函數
+        // 校驗和計算：所有前面位元組累加，取低8位
         function calcChecksum(bytes) {
             let sum = 0;
             for (let i = 0; i < bytes.length; i++) {
                 sum += bytes[i];
             }
-            return sum & 0xFF; // 取低8位
+            return sum & 0xFF;
         }
 
         // 構建標準指令幀
+        // 格式：[0xAA(幀頭)] + [總長度] + [指令碼] + [3位參數] + [校驗和]
+        // 總長度 = 7 字節（固定）
         function buildCmd(cmd, param1 = 0, param2 = 0, param3 = 0) {
-            const frame = [0xAA, 0x06, cmd, param1, param2, param3];
-            frame.push(calcChecksum(frame));
+            const frame = [
+                0xAA,   // 幀頭
+                0x07,   // 總長度（修正：整個幀共7字節）
+                cmd,    // 指令碼
+                param1, // 參數1
+                param2, // 參數2
+                param3  // 參數3
+            ];
+            frame.push(calcChecksum(frame)); // 附加校驗和
             return new Uint8Array(frame);
         }
 
         // 指令定義（自動計算正確校驗和）
-        const CMD_ENTER_REMOTE = buildCmd(0x01); // 進入遙控模式
-        const CMD_CAPTURE_PHOTO = buildCmd(0x05); // 單張拍照
+        const CMD_ENTER_REMOTE = buildCmd(0x01);    // 進入藍牙遙控模式
+        const CMD_CAPTURE_PHOTO = buildCmd(0x05);  // 單張拍照
         
         // PDF.js 初始化
         pdfjsLib.GlobalWorkerOptions.workerSrc = 
@@ -378,7 +387,7 @@
 
                 // 連線後自動進入遙控模式
                 await btWriteChar.writeValue(CMD_ENTER_REMOTE);
-                await new Promise(r => setTimeout(r, 600));
+                await new Promise(r => setTimeout(r, 800));
 
                 console.log('✅ 連接成功，已進入遙控模式');
                 document.getElementById('bt-status').textContent = `藍牙：已連接 ${device.name}`;
